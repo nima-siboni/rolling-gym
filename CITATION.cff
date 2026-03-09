@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "H. SIBONI"
+  given-names: "NIMA"
+- family-names: "KIAMOUSAVI"
+  given-names: "SEYEDREZA"
+
+title: "Rolling Gym"
+version: 0.1.0
+date-released: 2024-06-02
+url: "https://github.com/nima-siboni/rolling-gym"

@@ -1,0 +1,70 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rollinggym"]
+
+[project]
+name = "rollinggym"
+version = "0.1.0"
+description = "A Gymnasium environment for flat rolling process simulation and optimization"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [
+  { name = "Seyyedreza Kiamousavi" },
+  { name = "Nima H. Siboni" },
+]
+keywords = ["gymnasium", "reinforcement-learning", "flat-rolling", "steel", "simulation", "pyroll"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+readme = "README.md"
+dependencies = [
+  "gymnasium==1.0.0",
+  "pygame>=2.1.3",
+  "numpy>=1.24.0",
+  "pyroll-core>=2.0.0",
+  "pyroll-integral-thermal",
+  "pyroll-lippmann-mahrenholz-force-torque",
+  "pyroll-wusatowski-spreading",
+  "pyroll-zouhar-contact",
+  "pyroll-report",
+  "matplotlib>=3.7.0",
+  "pandas>=2.0.0",
+  "pydantic>=2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/nima-siboni/rolling-gym"
+Repository = "https://github.com/nima-siboni/rolling-gym"
+Issues = "https://github.com/nima-siboni/rolling-gym/issues"
+
+[project.optional-dependencies]
+dev = [
+  "pre-commit",
+  "pytest",
+  "pytest-cov",
+  "pylint",
+  "mypy",
+]
+
+[tool.uv]
+environments = [
+  "sys_platform != 'darwin' or platform_machine != 'x86_64'",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v"
