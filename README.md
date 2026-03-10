@@ -145,7 +145,7 @@ If you use this software, please cite:
 
 ```bibtex
 @software{rollinggym,
-  author = {H. Siboni, Nima and Kiamousavi, Seyedreza},
+  author = {Kiamousavi, Seyedreza and H. Siboni, Nima},
   title = {Rolling Gym},
   url = {https://github.com/nima-siboni/rolling-gym},
 }
