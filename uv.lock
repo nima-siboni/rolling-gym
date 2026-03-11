@@ -1602,6 +1602,18 @@ wheels = [
 ]
 
 [[package]]
+name = "pyroll-jmak-recrystallization"
+version = "3.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyroll-core", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/50/0c/1ae150deab0d2018c8574340eacac99b0e2a91d4faf409f3654e0e857227/pyroll_jmak_recrystallization-3.0.0.tar.gz", hash = "sha256:38aa2b321a9569498974bdcf941ca595c187afae9bd71802479a81314c30b2a4", size = 8896, upload-time = "2024-11-07T12:05:00.89Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7e/e5/8384f43a281e18d999d44024f7147a608527235416d38748ea5253fdd309/pyroll_jmak_recrystallization-3.0.0-py3-none-any.whl", hash = "sha256:c7823cbe614627b0e432f6032bb31c3d3f5c28d645043ec10465af3e24d1926e", size = 10595, upload-time = "2024-11-07T12:05:02.212Z" },
+]
+
+[[package]]
 name = "pyroll-lippmann-mahrenholz-force-torque"
 version = "3.0.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1784,6 +1796,7 @@ dependencies = [
     { name = "pygame", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
     { name = "pyroll-core", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
     { name = "pyroll-integral-thermal", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
+    { name = "pyroll-jmak-recrystallization", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
     { name = "pyroll-lippmann-mahrenholz-force-torque", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
     { name = "pyroll-report", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
     { name = "pyroll-wusatowski-spreading", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
@@ -1812,6 +1825,7 @@ requires-dist = [
     { name = "pylint", marker = "extra == 'dev'" },
     { name = "pyroll-core", specifier = ">=2.0.0" },
     { name = "pyroll-integral-thermal" },
+    { name = "pyroll-jmak-recrystallization" },
     { name = "pyroll-lippmann-mahrenholz-force-torque" },
     { name = "pyroll-report" },
     { name = "pyroll-wusatowski-spreading" },

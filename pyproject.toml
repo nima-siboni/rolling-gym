@@ -38,6 +38,7 @@ dependencies = [
   "pyroll-wusatowski-spreading",
   "pyroll-zouhar-contact",
   "pyroll-report",
+  "pyroll-jmak-recrystallization",
   "matplotlib>=3.7.0",
   "pandas>=2.0.0",
   "pydantic>=2.0",

@@ -32,7 +32,7 @@ uv sync --python 3.10 --dev
 import gymnasium as gym
 import rollinggym  # registers the environment
 
-from rollinggym.env.config_presets import create_s355_config
+from rollinggym.env.rolling_config_presets import create_s355_config
 
 config = create_s355_config()
 env = gym.make("rollinggym/FlatRolling-v0.0", env_config={"render_mode": None, "config": config})
@@ -75,7 +75,7 @@ A `Dict` with two keys:
 | 8 | Current grain size | um |
 | 9 | Target grain size | um |
 
-- **`action_mask`**: binary masks for each action dimension (1.0 = allowed, 0.0 = disallowed)
+- **`action_mask`**: a `Dict` of binary masks, one `Box` per action dimension (`height_reduction`, `interpass_time`, `rolling_velocity`; 1.0 = allowed, 0.0 = disallowed)
 
 ### Reward Structure
 
@@ -104,7 +104,7 @@ Interpass time = 0 and rolling velocity = 0 are always masked.
 Use factory functions to create validated configurations:
 
 ```python
-from rollinggym.env.config_presets import create_s355_config
+from rollinggym.env.rolling_config_presets import create_s355_config
 
 # Default S355 configuration
 config = create_s355_config()
@@ -123,15 +123,7 @@ config = create_s355_config(
 )
 ```
 
-See `rollinggym/env/config_presets.py` for all available parameters.
-
-## Examples
-
-The `example_scripts/` directory contains runnable examples:
-
-- `simulate_pass_schedule.py` — run a full pass schedule simulation
-- `compare_interpass_scenarios.py` — compare different interpass time strategies
-- `pyroll_example_pass_schedule.py` — direct PyRoll simulation example
+See `rollinggym/env/rolling_config_presets.py` for all available parameters.
 
 ## Running Tests
 
