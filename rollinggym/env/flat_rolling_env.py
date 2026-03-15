@@ -45,6 +45,38 @@ class FlatRollingEnv(Env):     # pylint: disable=too-many-instance-attributes
     re-simulating the entire pass schedule at each step.
     """
 
+    # ==================== Class-Level Constants ====================
+
+    #: Schema for the info dict returned by ``_get_info()``.
+    #: Maps key name → (state_index, cast_type, unit, human-readable description).
+    INFO_SCHEMA: dict[str, tuple[int, type, str, str]] = {
+        'current_thickness': (0, float, 'mm', 'Current slab thickness'),
+        'step_count': (1, int, 'int', 'Current pass number (0-indexed)'),
+        'hr_limit': (2, float, 'mm', 'Max allowed height reduction per pass'),
+        'target_thickness': (3, float, 'mm', 'Desired final thickness'),
+        'rolling_force': (4, float, 'N', 'Force from last pass (0 at start)'),
+        'rolling_torque': (5, float, 'Nm', 'Torque from last pass (0 at start)'),
+        'stock_temperature': (6, float, 'K', 'Current temperature'),
+        'target_temperature': (7, float, 'K', 'Desired final temperature'),
+        'current_grain_size': (8, float, 'um', 'Current grain size in micrometers'),
+        'target_grain_size': (9, float, 'um', 'Desired final grain size in micrometers'),
+    }
+
+    #: Action space dimensions: (height_reduction, interpass_time, rolling_velocity).
+    ACTION_DIMS: tuple[int, int, int] = (501, 121, 7)
+
+    #: Divisor to convert HR action index to mm (action[0] / HR_RESOLUTION).
+    HR_RESOLUTION: float = 10.0
+
+    #: Divisor to convert velocity action index to m/s (action[2] / VELOCITY_DIVISOR).
+    VELOCITY_DIVISOR: float = 12.0
+
+    #: Maximum height reduction as a fraction of current thickness.
+    MAX_HR_FRACTION: float = 0.70
+
+    #: Maximum number of steps before episode truncation.
+    MAX_STEPS: int = 25
+
     def __init__(
             self,
             env_config,
@@ -120,7 +152,7 @@ class FlatRollingEnv(Env):     # pylint: disable=too-many-instance-attributes
         # action[0]: 0.00 to 50.00 mm height reduction with 0.1 mm resolution
         # action[1]: 1 to 120 s inter-pass time (0 is masked as invalid)
         # action[2]: 0.083-0.50 m/s (5-30 m/min) rolling velocity (0 is masked as invalid)
-        self.action_space = MultiDiscrete([501, 121, 7])
+        self.action_space = MultiDiscrete(list(self.ACTION_DIMS))
 
         # Observation space as Dict for action masking
         # "observations" contains the z-score normalized state vector
@@ -148,19 +180,19 @@ class FlatRollingEnv(Env):     # pylint: disable=too-many-instance-attributes
                 'height_reduction': Box(
                     low=0.0,
                     high=1.0,
-                    shape=(501,),
+                    shape=(self.ACTION_DIMS[0],),
                     dtype=np.float32,
                 ),
                 'interpass_time': Box(
                     low=0.0,
                     high=1.0,
-                    shape=(121,),
+                    shape=(self.ACTION_DIMS[1],),
                     dtype=np.float32,
                 ),
                 'rolling_velocity': Box(
                     low=0.0,
                     high=1.0,
-                    shape=(7,),
+                    shape=(self.ACTION_DIMS[2],),
                     dtype=np.float32,
                 ),
             }),
@@ -203,12 +235,12 @@ class FlatRollingEnv(Env):     # pylint: disable=too-many-instance-attributes
         target_thickness_mm = self.state[3]
 
         # Vectorized height reduction mask: actions 0..500 map to 0.0..50.0 mm
-        actions_mm = np.arange(501) / 10.0
+        actions_mm = np.arange(self.ACTION_DIMS[0]) / self.HR_RESOLUTION
         hr_mask = (
             (
                 actions_mm <= hr_limit_mm
             ) & (
-                actions_mm <= current_thickness_mm * 0.70
+                actions_mm <= current_thickness_mm * self.MAX_HR_FRACTION
             ) & (
                 current_thickness_mm - actions_mm >= target_thickness_mm
             )
@@ -219,11 +251,11 @@ class FlatRollingEnv(Env):     # pylint: disable=too-many-instance-attributes
         hr_mask[0] = 1.0
 
         # Inter-pass time mask (typically all valid, therefore all ones)
-        int_mask = np.ones(121, dtype=np.float32)
+        int_mask = np.ones(self.ACTION_DIMS[1], dtype=np.float32)
         int_mask[0] = 0.0  # inter-pass time of 0 seconds is disallowed
 
         # velocity mask (5-30 m/min with 5 m/min steps, 0 is disallowed)
-        vel_mask = np.ones(7, dtype=np.float32)
+        vel_mask = np.ones(self.ACTION_DIMS[2], dtype=np.float32)
         vel_mask[0] = 0.0  # rolling velocity of 0 m/s is disallowed
 
         return {
@@ -255,20 +287,15 @@ class FlatRollingEnv(Env):     # pylint: disable=too-many-instance-attributes
     def _get_info(self) -> dict:
         """
         Get additional information about the current state of the environment.
+
+        Keys are defined by :attr:`INFO_SCHEMA` (single source of truth).
+
         Returns:
             dict: A dictionary containing additional information.
         """
         return {
-            'current_thickness': float(self.state[0]),
-            'step_count': int(self.state[1]),
-            'hr_limit': float(self.state[2]),
-            'target_thickness': float(self.state[3]),
-            'rolling_force': float(self.state[4]),
-            'rolling_torque': float(self.state[5]),
-            'stock_temperature': float(self.state[6]),
-            'target_temperature': float(self.state[7]),
-            'current_grain_size': float(self.state[8]),
-            'target_grain_size': float(self.state[9]),
+            k: cast(self.state[idx])
+            for k, (idx, cast, _, _) in self.INFO_SCHEMA.items()
         }
 
     def reset(      # pylint: disable=too-many-branches
@@ -663,11 +690,11 @@ class FlatRollingEnv(Env):     # pylint: disable=too-many-instance-attributes
 
         previous_state = self.state.copy()
         # action[0] is in [0, 500], height reduction in [0, 50] mm.
-        height_reduction_mm = int(action[0]) / 10.00
+        height_reduction_mm = int(action[0]) / self.HR_RESOLUTION
         # action[1] is in [1, 120]  (0 is masked), interpass time in [1, 120] seconds
         interpass_time_s = int(action[1])
         # action[2] is in [1, 6] (0 is masked), rolling velocity in [0.083, 0.50] m/s
-        roll_velocity_m_s = int(action[2]) / 12.0
+        roll_velocity_m_s = int(action[2]) / self.VELOCITY_DIVISOR
 
         (
             new_state, new_schedule_thick_m, new_schedule_inter_s, new_rolling_velocities_m_s,
@@ -694,7 +721,7 @@ class FlatRollingEnv(Env):     # pylint: disable=too-many-instance-attributes
             completed=terminated,
             config=self.config,
         )
-        truncated = bool(new_state[1] >= 25.0)  # max steps per episode
+        truncated = bool(new_state[1] >= self.MAX_STEPS)  # max steps per episode
 
         # update the environment state and the pass_schedule
         self.state = new_state
@@ -729,3 +756,196 @@ class FlatRollingEnv(Env):     # pylint: disable=too-many-instance-attributes
         self._cached_profile = None
         self._cached_roll = None
         self.state = None
+
+    # ==================== LLM Prompt Description Methods ====================
+    # Each method returns a markdown section derived from class constants and
+    # config values — single source of truth, no hardcoded duplicates.
+
+    @classmethod
+    def describe_info_dict(cls) -> str:
+        """Describe the info dict keys, units, and meanings from :attr:`INFO_SCHEMA`."""
+        rows = '\n'.join(
+            f'| {key:<19} | {unit:<4} | {desc:<40} |'
+            for key, (_, _, unit, desc) in cls.INFO_SCHEMA.items()
+        )
+        return (
+            '### info dict (raw physical units, NOT normalized)\n'
+            '\n'
+            '| Key                 | Unit | Description                              |\n'
+            '|---------------------|------|------------------------------------------|\n'
+            f'{rows}\n'
+        )
+
+    @classmethod
+    def describe_action_space(cls) -> str:
+        """Describe action masks, return format, and index-to-physical conversions."""
+        hr, ipt, vel = cls.ACTION_DIMS
+        vel_max_idx = vel - 1
+        return (
+            '### action_mask dict (boolean arrays, 1.0 = allowed, 0.0 = blocked)\n'
+            '\n'
+            '| Key                | Shape    | Meaning                                          |\n'
+            '|--------------------|----------|--------------------------------------------------|\n'
+            f'| height_reduction   | ({hr},) '
+            f'| Index i -> i/{cls.HR_RESOLUTION:.1f} mm reduction. Index 0 = 0mm.   |\n'
+            f'| interpass_time     | ({ipt},) '
+            f'| Index i -> i seconds. Index 0 is always masked.   |\n'
+            f'| rolling_velocity   | ({vel},)   '
+            f'| Index i -> i/{cls.VELOCITY_DIVISOR:.1f} m/s. Index 0 is always masked.  |\n'
+            '\n'
+            '### What your function must return\n'
+            '\n'
+            'A list of 3 integers: [hr_action, interpass_action, velocity_action]\n'
+            '\n'
+            '## Action -> Physical Value Conversions\n'
+            '\n'
+            f'- **Height reduction**: hr_mm = action[0] / {cls.HR_RESOLUTION:.1f}\n'
+            f'  To get X mm reduction, return int(X * {cls.HR_RESOLUTION:.0f}). E.g. 25mm -> 250.\n'
+            '- **Interpass time**: interpass_s = action[1]\n'
+            f'  Direct seconds. Return an int from 1 to {ipt - 1}.\n'
+            '- **Rolling velocity**: velocity_m_s = action[2] / {:.1f}\n'.format(cls.VELOCITY_DIVISOR)
+            + f'  Index 1 = {1 / cls.VELOCITY_DIVISOR:.3f} m/s (5 m/min), '
+            f'index {vel_max_idx} = {vel_max_idx / cls.VELOCITY_DIVISOR:.1f} m/s (30 m/min).\n'
+        )
+
+    @classmethod
+    def describe_action_mask_constraints(cls) -> str:
+        """Describe the physical constraints that shape the action mask."""
+        pct = int(cls.MAX_HR_FRACTION * 100)
+        return (
+            '## Action Mask Constraints (what limits the HR mask)\n'
+            '\n'
+            '- HR cannot exceed hr_limit (from info dict)\n'
+            f'- HR cannot exceed {pct}% of current thickness\n'
+            '- HR cannot bring thickness below target\n'
+            '- Index 0 (no reduction) is always valid as a safety fallback\n'
+            '- Interpass time index 0 is always masked (minimum 1 second)\n'
+            f'- Velocity index 0 is always masked (minimum {1 / cls.VELOCITY_DIVISOR:.3f} m/s)\n'
+        )
+
+    @classmethod
+    def describe_reward_structure(cls) -> str:
+        """Describe the 5 reward components from :mod:`state_evaluation` constants."""
+        from rollinggym.env.state_evaluation import (  # noqa: C0415
+            GS_COMPLETION_MAX_BONUS,
+            GS_COMPLETION_TOLERANCE_UM,
+            HR_MAX_BONUS,
+            HR_MAX_PENALTY,
+            STEP_PENALTY,
+            TEMP_COMPLETION_MAX_BONUS,
+            TEMP_COMPLETION_TOLERANCE_K,
+        )
+        return (
+            '## Reward Structure (exact values)\n'
+            '\n'
+            'Each step produces 5 reward components:\n'
+            '\n'
+            f'1. **Step penalty**: {STEP_PENALTY} every step. Fewer passes = better.\n'
+            '2. **GS progress bonus**: Rewards reducing grain size toward target.\n'
+            '   Severely penalizes overshooting below target (-5.0 to -10.0 penalty).\n'
+            f'3. **HR efficiency bonus**: 0 to {HR_MAX_BONUS:.0f} for large reductions within equipment limits.\n'
+            f'   {HR_MAX_PENALTY} penalty if force or torque exceeded.\n'
+            f'4. **GS completion bonus**: 0 to {GS_COMPLETION_MAX_BONUS:.0f} at episode end, proportional to grain size\n'
+            f'   accuracy. Tolerance: +/- {GS_COMPLETION_TOLERANCE_UM:.0f} um.\n'
+            f'5. **Temperature completion bonus**: 0 to {TEMP_COMPLETION_MAX_BONUS:.0f} at episode end, proportional to\n'
+            f'   temperature accuracy. Tolerance: +/- {TEMP_COMPLETION_TOLERANCE_K:.0f} K.\n'
+        )
+
+    @classmethod
+    def describe_equipment_limits(cls, config: 'EnvConfig') -> str:
+        """Describe equipment limits derived from a live config."""
+        force = config.equipment.force_N
+        torque = config.equipment.torque_Nm
+        return (
+            '## Equipment Limits\n'
+            '\n'
+            f'- Force limit: {force:,.0f} N ({force / 1e6:.0f} MN)\n'
+            f'- Torque limit: {torque:,.0f} Nm ({torque / 1e3:.0f} kNm per roll)\n'
+        )
+
+    @classmethod
+    def describe_termination(cls, config: 'EnvConfig') -> str:
+        """Describe episode termination conditions."""
+        tolerance_mm = config.target.tolerance_m * 1e3
+        return (
+            '## Episode Termination\n'
+            '\n'
+            f'- **Success**: |current_thickness - target_thickness| <= {tolerance_mm:.0f} mm\n'
+            f'- **Truncation**: {cls.MAX_STEPS} steps reached (bad outcome)\n'
+        )
+
+    @staticmethod
+    def describe_domain_knowledge() -> str:
+        """Describe metallurgical domain knowledge for hot rolling of S355 steel."""
+        return (
+            '## Domain Knowledge: Hot Rolling of S355 Steel\n'
+            '\n'
+            '- Higher temperature -> lower flow stress -> lower forces and torques\n'
+            '- Heavier reductions -> more dynamic recrystallization -> finer grain size\n'
+            '- Longer interpass time -> more static recrystallization + grain growth + cooling\n'
+            '- Temperature drops roughly 20-80 K per pass depending on interpass time and\n'
+            '  deformation heating\n'
+            '- Grain refinement is most effective with heavy reductions at high temperatures\n'
+            '- As thickness decreases, the same mm-reduction represents a larger % strain,\n'
+            '  causing higher forces\n'
+            '- Near the target: switch to small reductions for precise thickness control\n'
+            '- Rolling velocity affects strain rate: higher velocity -> higher strain rate\n'
+            '  -> higher flow stress -> higher forces, but also more deformation heating\n'
+        )
+
+    @classmethod
+    def describe_source_code(cls) -> str:
+        """Return source code of key env methods for LLM reference."""
+        import inspect  # noqa: C0415
+        methods = [
+            cls._get_info,
+            cls._get_action_mask,
+            cls.step,
+            cls.calculate_state,
+            cls.reset,
+        ]
+        parts = []
+        for method in methods:
+            name = method.__name__
+            source = inspect.getsource(method)
+            parts.append(f'### FlatRollingEnv.{name}\n```python\n{source}```')
+        return '\n\n'.join(parts) + '\n'
+
+    @classmethod
+    def describe_reward_source_code(cls) -> str:
+        """Return source code of reward functions for LLM reference."""
+        import inspect  # noqa: C0415
+        from rollinggym.env.state_evaluation import (  # noqa: C0415
+            calculate_completion_bonus,
+            calculate_grain_size_progress_bonus,
+            calculate_hr_efficiency_bonus,
+            calculate_reward,
+        )
+        funcs = [
+            calculate_reward,
+            calculate_completion_bonus,
+            calculate_hr_efficiency_bonus,
+            calculate_grain_size_progress_bonus,
+        ]
+        parts = []
+        for func in funcs:
+            source = inspect.getsource(func)
+            parts.append(f'### {func.__name__}\n```python\n{source}```')
+        return '\n\n'.join(parts) + '\n'
+
+    @classmethod
+    def describe_all(cls, config: 'EnvConfig') -> str:
+        """Return all description sections joined together."""
+        return '\n'.join([
+            cls.describe_info_dict(),
+            cls.describe_action_space(),
+            cls.describe_action_mask_constraints(),
+            cls.describe_reward_structure(),
+            cls.describe_equipment_limits(config),
+            cls.describe_termination(config),
+            cls.describe_domain_knowledge(),
+            '## Source Code Reference\n',
+            cls.describe_source_code(),
+            '## Reward Functions Source Code\n',
+            cls.describe_reward_source_code(),
+        ])

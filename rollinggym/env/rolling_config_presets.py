@@ -37,6 +37,261 @@ from rollinggym.env.rolling_env_config import ProcessConstraints
 from rollinggym.env.rolling_env_config import TargetSpecifications
 
 
+# ==================== Material Reference Data ====================
+# S355-specific metallurgical reference for LLM prompt context.
+# Paired with create_s355_config() — if a different steel grade is added,
+# it should get its own reference constant.
+
+S355_MATERIAL_REFERENCE: str = """\
+# Hot Rolling of S355 (EN 10025-2) – Relevant Parameters & Control Models
+
+Material: S355 structural steel
+Standard: EN 10025-2 (European Committee for Standardization)
+
+---
+
+# 1. Temperature-Dependent Physical Properties
+
+Density
+ρ(T) ≈ 7850 kg/m³ (weak temperature dependence)
+
+Thermal conductivity λ(T)
+- 20°C → ~55 W/mK
+- 800°C → ~35 W/mK
+- 1200°C → ~28 W/mK
+
+Specific heat capacity cp(T)
+- 20°C → ~470 J/kgK
+- 800°C → ~650 J/kgK
+- 1200°C → ~750 J/kgK
+
+Thermal expansion coefficient α(T)
+α ≈ 11–14 × 10⁻⁶ 1/K
+
+Solidus temperature ≈ 1460–1490°C
+Liquidus temperature ≈ 1500°C
+
+---
+
+# 2. Hot Deformation / Flow Stress Models
+
+## 2.1 Arrhenius-Type (Sellars–Tegart) Model
+
+Strain rate relation:
+
+ε̇ = A [sinh(α σ)]^n exp(-Q / RT)
+
+Zener–Hollomon parameter:
+
+Z = ε̇ exp(Q / RT)
+
+Inverted stress form:
+
+σ = (1/α) sinh⁻¹[(Z/A)^(1/n)]
+
+Typical parameters for S355:
+
+Q ≈ 270–320 kJ/mol
+n ≈ 4–6
+α ≈ 0.01–0.02 MPa⁻¹
+
+Use cases:
+- Rolling force prediction
+- Pass schedule design
+- Level-2 automation systems
+- FEM simulation
+
+---
+
+## 2.2 Empirical Mean Flow Stress Model (Fast Control Model)
+
+σ̄ = K ε^n ε̇^m exp(-βT)
+
+Typical parameter ranges:
+
+n ≈ 0.15–0.25
+m ≈ 0.10–0.20
+β ≈ 0.002–0.004 K⁻¹
+
+Use cases:
+- Real-time rolling force estimation
+- Hydraulic gap control
+- Load prediction
+
+---
+
+# 3. Rolling Force and Geometry Models
+
+## 3.1 Contact Length
+
+L = √(R · Δh)
+
+R = roll radius
+Δh = thickness reduction
+
+---
+
+## 3.2 Rolling Force
+
+F = σ̄ · w · L · C_f
+
+Where:
+
+σ̄ = mean flow stress
+w = strip width
+C_f = friction correction factor (≈ 1.1–1.4)
+
+Applications:
+- Hydraulic roll gap control
+- Mill load prediction
+- Drive torque estimation
+
+---
+
+# 4. Friction Models
+
+## 4.1 Coulomb Friction Model
+
+τ = μ p
+
+μ ≈ 0.3–0.6 (hot rolling typical)
+
+---
+
+## 4.2 Shear Friction Model (Preferred for FEM)
+
+τ = m · k
+
+m ≈ 0.7–1.0
+k = shear yield stress
+
+More stable under high pressure conditions.
+
+---
+
+# 5. Microstructure Evolution Models
+
+## 5.1 Dynamic Recrystallization (DRX)
+
+Critical strain:
+
+ε_c ≈ 0.5 ε_p
+
+Peak strain model:
+
+ε_p = K Z^a
+
+a ≈ 0.1–0.2
+
+Control relevance:
+- Grain refinement
+- Austenite grain size control
+- Final toughness improvement
+
+---
+
+## 5.2 Static Recrystallization (SRX) – Between Passes
+
+Avrami-type kinetics:
+
+X = 1 - exp[-(t / t0.5)^n]
+
+Where:
+
+X = recrystallized fraction
+t = interpass time
+t0.5 = time for 50% recrystallization
+
+Strong exponential temperature dependence.
+
+Applications:
+- Interpass time optimization
+- Roughing mill schedule design
+
+---
+
+# 6. Phase Transformation Temperatures (S355)
+
+Ac1 ≈ 720°C
+Ac3 ≈ 830–870°C
+Ar3 ≈ 800–830°C
+
+Control strategy:
+- Finish rolling slightly above Ar3
+- Controlled cooling for fine ferrite-pearlite microstructure
+- Use in thermomechanical controlled processing (TMCP)
+
+---
+
+# 7. Heat Transfer Models
+
+## 7.1 Heat Transfer Coefficients
+
+Roll contact: 5000–15000 W/m²K
+Descaling water: 10000–25000 W/m²K
+Air cooling: 10–50 W/m²K
+
+Required for:
+- Exit temperature prediction
+- Cooling line control
+- Thermal crown management
+
+---
+
+# 8. Industrial Strain Rate Ranges
+
+Roughing mill: 0.5–5 s⁻¹
+Finishing mill: 5–50 s⁻¹
+
+Higher strain rate → higher flow stress → higher rolling force.
+
+---
+
+# 9. Typical Industrial Rolling Parameters
+
+Roughing temperature: 1100–1200°C
+Finishing temperature: 850–950°C
+Reduction per pass: 10–25%
+Exit temperature: 850–900°C
+
+---
+
+# 10. Control-Relevant Measured Variables
+
+- Entry temperature
+- Exit temperature
+- Rolling force
+- Roll gap position
+- Strip speed
+- Interpass time
+- Cooling water flow rate
+
+Used in:
+- Level 1 hydraulic control
+- Level 2 predictive process models
+- Digital twin / FEM validation
+
+---
+
+# 11. Recommended Model Hierarchy for Control Architecture
+
+Level 1 (Real-Time Control)
+- Empirical mean flow stress model
+- Rolling force model
+- Thermal balance model
+
+Level 2 (Process Optimization)
+- Arrhenius constitutive model
+- Recrystallization kinetics (DRX + SRX)
+- Phase transformation model
+
+Offline / FEM
+- Shear friction model
+- Fully coupled thermo-mechanical simulation
+- Grain size evolution model
+"""
+
+
 def create_s355_config(  # pylint: disable=too-many-locals
     *,
     # Geometry overrides (most commonly changed)
@@ -236,4 +491,5 @@ def create_s355_config(  # pylint: disable=too-many-locals
             speed_m_s=0.5,
             # safety_factor uses universal default (0.8)
         ),
+        material_reference=S355_MATERIAL_REFERENCE,
     )

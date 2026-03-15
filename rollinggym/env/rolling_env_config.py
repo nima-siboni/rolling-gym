@@ -407,6 +407,10 @@ class EnvConfig(BaseModel):
     equipment: EquipmentLimits = Field(
         description='Equipment operational limits',
     )
+    material_reference: str = Field(
+        default='',
+        description='Material-specific reference text for LLM prompt context',
+    )
 
     # ==================== Cross-Group Validation ====================
     @model_validator(mode='after')

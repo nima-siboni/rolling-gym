@@ -29,6 +29,23 @@ from rollinggym.env.rolling_env_config import EnvConfig
 
 logger = logging.getLogger(__name__)
 
+# ==================== Reward Constants ====================
+# Single source of truth for reward values used in calculate_reward()
+# and referenced by FlatRollingEnv.describe_reward_structure().
+
+STEP_PENALTY: float = -5.0
+
+HR_MAX_BONUS: float = 10.0
+HR_MAX_PENALTY: float = -5.0
+
+GS_COMPLETION_MAX_BONUS: float = 25.0
+GS_COMPLETION_MAX_PENALTY: float = -2.0
+GS_COMPLETION_TOLERANCE_UM: float = 20.0
+
+TEMP_COMPLETION_MAX_BONUS: float = 25.0
+TEMP_COMPLETION_MAX_PENALTY: float = -2.0
+TEMP_COMPLETION_TOLERANCE_K: float = 50.0
+
 
 def calculate_grain_size_progress_bonus(
     current_grain_size_um: float,
@@ -284,29 +301,29 @@ def calculate_reward(
         force_limit=config.equipment.force_N,
         torque=current_state[5],
         torque_limit=config.equipment.torque_Nm,
-        max_bonus=10.0,
-        max_penalty=-5.0,
+        max_bonus=HR_MAX_BONUS,
+        max_penalty=HR_MAX_PENALTY,
     )
 
     gs_completion_bonus = calculate_completion_bonus(
         current_param=current_state[8],   # Current grain size [µm]
         target_param=current_state[9],    # Target grain size [µm]
         completed=completed,
-        max_bonus=25.0,
-        max_penalty=-2.0,
-        tolerance=20.0,                   # Tolerance [µm]
+        max_bonus=GS_COMPLETION_MAX_BONUS,
+        max_penalty=GS_COMPLETION_MAX_PENALTY,
+        tolerance=GS_COMPLETION_TOLERANCE_UM,
     )
 
     temperature_completion_bonus = calculate_completion_bonus(
         current_param=current_state[6],   # Current temperature [K]
         target_param=current_state[7],    # Target temperature [K]
         completed=completed,
-        max_bonus=25.0,
-        max_penalty=-2.0,
-        tolerance=50.0,                   # Tolerance [K]
+        max_bonus=TEMP_COMPLETION_MAX_BONUS,
+        max_penalty=TEMP_COMPLETION_MAX_PENALTY,
+        tolerance=TEMP_COMPLETION_TOLERANCE_K,
     )
 
-    step_penalty = -5.0
+    step_penalty = STEP_PENALTY
 
     total = gs_progress_bonus + hr_efficiency_bonus + \
         gs_completion_bonus + temperature_completion_bonus + step_penalty
