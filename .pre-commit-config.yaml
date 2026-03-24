@@ -1,0 +1,69 @@
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+    -   id: trailing-whitespace
+    -   id: end-of-file-fixer
+    -   id: check-yaml
+    -   id: debug-statements
+    -   id: double-quote-string-fixer
+    -   id: name-tests-test
+    -   id: requirements-txt-fixer
+-   repo: https://github.com/asottile/setup-cfg-fmt
+    rev: v2.2.0
+    hooks:
+    -   id: setup-cfg-fmt
+-   repo: https://github.com/asottile/reorder_python_imports
+    rev: v3.9.0
+    hooks:
+    -   id: reorder-python-imports
+        exclude: ^(pre_commit/resources/|testing/resources/python3_hooks_repo/|tests/)
+        args: [--py38-plus, --add-import, 'from __future__ import annotations']
+-   repo: https://github.com/asottile/add-trailing-comma
+    rev: v2.4.0
+    hooks:
+    -   id: add-trailing-comma
+        args: [--py36-plus]
+#-   repo: https://github.com/asottile/pyupgrade
+#    rev: v3.3.1
+#    hooks:
+#    -   id: pyupgrade
+#        args: [--py38-plus]
+-   repo: https://github.com/pre-commit/mirrors-autopep8
+    rev: v2.0.4         # v2.0.2 was incompatible with pycodestyle
+    hooks:
+    -   id: autopep8
+        exclude: ^tests/
+-   repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+    -   id: mypy
+        exclude: ^(testing/resources/|tests/)
+-   repo: https://github.com/PyCQA/flake8
+    rev: 6.0.0
+    hooks:
+    -   id: flake8
+        exclude: ^tests/
+        args: ['--max-line-length=100', '--ignore=TYP001', '--ignore=F401']
+- repo: local
+  hooks:
+    - id: pylint
+      name: pylint
+      entry: pylint
+      language: system
+      types: [python]
+      args:
+        [
+            # '--disable=W0611',
+            # '--disable=R1710',
+            # '--disable=W0102',    # Dangerous default value [] as argument (dangerous-default-value)
+            '--disable=R0913',    # Too many arguments
+            '--disable=R0917',    # Too many positional arguments
+            # '--disable=W0406',
+            # '--disable=R0902',
+            # '--disable=R0914',    # too many local variables
+            '--max-line-length=100',
+            '-rn',                  # Only display messages
+            '--rcfile=.pylintrc',   # Link to your config file
+            '--disable=W0311',      # Bad indentation check. Incompatible with other indentation styles
+        ]
