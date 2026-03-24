@@ -95,48 +95,6 @@ class FlatRollingEnv(Env):     # pylint: disable=too-many-instance-attributes
         # Actual pass number = len(pass_schedule_thickness_sequence)
         self.state = np.zeros((10,), dtype=np.float32)
 
-        # Observation normalization statistics (mean and std for each state dimension)
-        # These values are based on typical ranges observed during training episodes:
-        # - state[0]: thickness ~5-150 mm
-        # - state[1]: step count 0-25
-        # - state[2]: HR limit ~20-40 mm
-        # - state[3]: target thickness ~5-15 mm
-        # - state[4]: force ~0-4e6 N
-        # - state[5]: torque ~0-1e5 Nm
-        # - state[6]: current temperature ~700-1350 K
-        # - state[7]: target temperature ~1073-1273 K (800-1000 C)
-        # - state[8]: current grain size ~1-250 µm
-        # - state[9]: target grain size ~5-25 µm
-        self.obs_mean = np.array(
-            [
-                60.0,       # state[0]: thickness [mm]
-                12.0,       # state[1]: step count
-                30.0,       # state[2]: HR limit [mm]
-                10.0,       # state[3]: target thickness [mm]
-                1.5e6,      # state[4]: force [N]
-                4.0e4,      # state[5]: torque [Nm]
-                1025.0,     # state[6]: current temperature [K]
-                1173.0,     # state[7]: target temperature [K]
-                100.0,      # state[8]: current grain size [µm]
-                15.0,       # state[9]: target grain size [µm]
-            ], dtype=np.float32,
-        )
-
-        self.obs_std = np.array(
-            [
-                40.0,       # state[0]: thickness [mm]
-                8.0,        # state[1]: step count
-                10.0,       # state[2]: HR limit [mm]
-                5.0,        # state[3]: target thickness [mm]
-                1.0e6,      # state[4]: force [N]
-                2.5e4,      # state[5]: torque [Nm]
-                200.0,      # state[6]: current temperature [K]
-                100.0,      # state[7]: target temperature [K]
-                60.0,       # state[8]: current grain size [µm]
-                8.0,        # state[9]: target grain size [µm]
-            ], dtype=np.float32,
-        )
-
         self.default_mode = env_config.get('mode', 'train')
 
         # Create dedicated RNG for this environment instance
@@ -278,7 +236,9 @@ class FlatRollingEnv(Env):     # pylint: disable=too-many-instance-attributes
                   and 'action_mask'
         """
         # Z-score normalization: (x - mean) / std
-        normalized_state = (self.state - self.obs_mean) / (self.obs_std + 1e-8)
+        mean = np.array(self.config.obs_normalization.mean, dtype=np.float32)
+        std = np.array(self.config.obs_normalization.std, dtype=np.float32)
+        normalized_state = (self.state - mean) / (std + 1e-8)
         return {
             'observations': normalized_state.astype(np.float32),
             'action_mask': self._get_action_mask(),

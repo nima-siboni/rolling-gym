@@ -348,6 +348,23 @@ class EquipmentLimits(BaseModel):
     )
 
 
+class ObservationNormalization(BaseModel):
+    """Z-score normalization statistics for each state dimension."""
+
+    model_config = {'validate_assignment': True}
+
+    mean: list[float] = Field(
+        min_length=10,
+        max_length=10,
+        description='Per-dimension observation means (10 state dims)',
+    )
+    std: list[float] = Field(
+        min_length=10,
+        max_length=10,
+        description='Per-dimension observation standard deviations (10 state dims)',
+    )
+
+
 # ==================== Main Configuration Class ====================
 
 
@@ -410,6 +427,9 @@ class EnvConfig(BaseModel):
     material_reference: str = Field(
         default='',
         description='Material-specific reference text for LLM prompt context',
+    )
+    obs_normalization: ObservationNormalization = Field(
+        description='Z-score normalization statistics for observation space',
     )
 
     # ==================== Cross-Group Validation ====================

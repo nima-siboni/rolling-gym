@@ -33,6 +33,7 @@ from rollinggym.env.rolling_env_config import InitialConditions
 from rollinggym.env.rolling_env_config import MaterialConfig
 from rollinggym.env.rolling_env_config import MaterialModels
 from rollinggym.env.rolling_env_config import MillConfig
+from rollinggym.env.rolling_env_config import ObservationNormalization
 from rollinggym.env.rolling_env_config import ProcessConstraints
 from rollinggym.env.rolling_env_config import TargetSpecifications
 
@@ -492,4 +493,30 @@ def create_s355_config(  # pylint: disable=too-many-locals
             # safety_factor uses universal default (0.8)
         ),
         material_reference=S355_MATERIAL_REFERENCE,
+        obs_normalization=ObservationNormalization(
+            mean=[
+                60.0,    # state[0]: thickness [mm]
+                12.0,    # state[1]: step count
+                30.0,    # state[2]: HR limit [mm]
+                10.0,    # state[3]: target thickness [mm]
+                1.5e6,   # state[4]: force [N]
+                4.0e4,   # state[5]: torque [Nm]
+                1025.0,  # state[6]: current temperature [K]
+                1173.0,  # state[7]: target temperature [K]
+                100.0,   # state[8]: current grain size [µm]
+                15.0,    # state[9]: target grain size [µm]
+            ],
+            std=[
+                40.0,    # state[0]: thickness [mm]
+                8.0,     # state[1]: step count
+                10.0,    # state[2]: HR limit [mm]
+                5.0,     # state[3]: target thickness [mm]
+                1.0e6,   # state[4]: force [N]
+                2.5e4,   # state[5]: torque [Nm]
+                200.0,   # state[6]: current temperature [K]
+                100.0,   # state[7]: target temperature [K]
+                60.0,    # state[8]: current grain size [µm]
+                8.0,     # state[9]: target grain size [µm]
+            ],
+        ),
     )
