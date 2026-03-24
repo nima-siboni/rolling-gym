@@ -201,17 +201,22 @@ def calculate_completion_bonus(
 
 def evaluate_state(current_state, hr_mm, config: EnvConfig) -> list:
     """
-    Check the current environment state.
+    Check the current environment state against operational constraints.
 
     Args:
-        current_state: Array containing [thickness, steps, hr_limit, target, force, torque]
-        hr: Height reduction in mm
-        config: Environment configurations
+        current_state: 10-element state vector:
+            [thickness_mm, step_count, hr_limit_mm, target_thickness_mm,
+             force_N, torque_Nm, temperature_K, target_temperature_K,
+             grain_size_um, target_grain_size_um]
+        hr_mm: Height reduction taken in this pass [mm].
+        config: Environment configuration (used for equipment limits and tolerances).
 
     Returns:
-        List of boolean evaluations:
-        [hr_lim_exceeded, overshoot, completed, excessive_force, excessive_torque,
-        simulation_failed]
+        list[bool] of length 6 in fixed order:
+            [hr_lim_exceeded, overshoot, completed, excessive_force,
+             excessive_torque, simulation_failed]
+        Simulation failure is indicated by sentinel value -100.0 in force or torque.
+        Excessive force/torque is triggered at 90% of the equipment limit.
     """
     # Simulation failure is indicated by -100 sentinel values
     simulation_failed = bool(
@@ -276,17 +281,24 @@ def calculate_reward(
         config: EnvConfig,
 ) -> tuple[float, dict[str, float | str]]:
     """
-    Calculate the reward based on the current state.
+    Calculate the multi-component reward for the current step.
 
     Args:
-        current_state: Array containing [thickness, steps, hr_limit, target, force, torque]
-        previous_grain_size_um: Previous grain size in micrometers (before this step)
-        height_reduction_mm: Height reduction taken in this pass [mm]
-        completed: Whether the episode completed (reached target thickness)
-        config: Environment configurations
+        current_state: 10-element state vector:
+            [thickness_mm, step_count, hr_limit_mm, target_thickness_mm,
+             force_N, torque_Nm, temperature_K, target_temperature_K,
+             grain_size_um, target_grain_size_um]
+        previous_grain_size_um: Grain size before this step [µm].
+        height_reduction_mm: Height reduction taken in this pass [mm].
+        completed: Whether the episode completed (reached target thickness).
+        config: Environment configuration (used for equipment limits).
 
     Returns:
-        Tuple of (total_reward, reward_details_dict)
+        tuple[float, dict[str, float]]:
+            - total_reward: Sum of all reward components.
+            - reward_details: Dict with keys:
+                'gs_progress_bonus', 'hr_efficiency_bonus', 'gs_completion_bonus',
+                'temperature_completion_bonus', 'step_penalty'
     """
     gs_progress_bonus = calculate_grain_size_progress_bonus(
         current_grain_size_um=current_state[8],

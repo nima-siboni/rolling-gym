@@ -1,5 +1,12 @@
-"""corrected Hitchcock roll flattening. This implementation changes how
-flattening ratio is defined compared with the original implementation."""
+"""
+Corrected Hitchcock roll flattening model.
+
+The original PyRoll implementation computes a negative flattening_hitchcock when
+the height change is negative (i.e. the strip thickens rather than reduces), which
+causes a negative flattening ratio and breaks the simulation. This module overrides
+flattening_ratio to return 1 whenever flattening_hitchcock <= 0, and overrides
+flattened_radius and max/min/working radius hooks to use this corrected value.
+"""
 from __future__ import annotations
 
 import numpy as np
@@ -16,11 +23,16 @@ SymmetricRollPass.Roll.flattened_radius = Hook[float]()
 
 @SymmetricRollPass.Roll.flattening_ratio
 def flattening_ratio(self: SymmetricRollPass.Roll):
-    """Calculates the ratio between flattened and initial roll radius using Hitchcocks formula.
-    In the case of an increase the strip thickness (negative height change), the original
-    implementation would produce a negative flattening_hitchcock, which can lead to a negative
-    flattening ratio, breaking the simulation. This implementation sets flattening_ratio to 1
-    in case flattening_hitchcock becomes negative for any reason"""
+    """
+    Calculate the ratio of flattened to nominal roll radius using Hitchcock's formula.
+
+    Handles the edge case where a negative height change (strip thickening) produces
+    a non-positive flattening_hitchcock value, which would yield an invalid ratio in
+    the original implementation. In that case, ratio is clamped to 1 (no flattening).
+
+    Returns:
+        float: Flattening ratio R_flat / R_nominal (≥ 1).
+    """
 
     roll_pass = self.roll_pass
 
@@ -45,7 +57,15 @@ def flattening_ratio(self: SymmetricRollPass.Roll):
 
 @SymmetricRollPass.Roll.flattened_radius
 def flattened_radius(self: SymmetricRollPass.Roll):
-    """Calculates the flattened radius."""
+    """
+    Calculate the flattened roll radius using the corrected flattening ratio.
+
+    Falls back to the nominal radius if roll_force is not yet available
+    (e.g. before the solver has computed forces for this pass).
+
+    Returns:
+        float: Flattened roll radius [m].
+    """
     roll_pass = self.roll_pass
 
     if 'roll_force' not in roll_pass.__dict__:
