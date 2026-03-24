@@ -45,10 +45,18 @@ def timeout(seconds):
         signal.signal(signal.SIGALRM, original_handler)
 
 
-def roll_torque(pass_sequence: pr.PassSequence):
+def roll_torque(pass_sequence: pr.PassSequence) -> float:
     """
     Calculate the roll torque for a given roll pass.
-    The original implementation in pyroll uses the wrong parameters and does not work.
+
+    Replaces the PyRoll built-in torque calculation, which uses incorrect parameters.
+    Uses mean flow stress and mean width weighted 1:2 between entry and exit profiles.
+
+    Args:
+        pass_sequence: A solved PyRoll PassSequence for a single roll pass.
+
+    Returns:
+        Roll torque [Nm].
     """
     mean_flow_stress = (
         pass_sequence.in_profile.flow_stress + 2 * pass_sequence.out_profile.flow_stress
@@ -70,7 +78,13 @@ def roll_torque(pass_sequence: pr.PassSequence):
 
 def roll_stock_mass(pass_sequence: pr.PassSequence) -> float:
     """
-    Calculate the mass of the rolling stock for a given roll pass.
+    Calculate the mass of the rolling stock entering a roll pass.
+
+    Args:
+        pass_sequence: A solved PyRoll PassSequence for a single roll pass.
+
+    Returns:
+        Mass of the rolling stock [kg].
     """
     return pass_sequence.in_profile.density * \
         pass_sequence.in_profile.height * \
@@ -83,9 +97,16 @@ def ultimate_tensile_strength(
         pass_sequence: pr.PassSequence,
 ) -> float:
     """
-    Calculate the ultimate tensile strength of the stock after rolling
-    based on the Hall-Petch relationship.
-    Returns UTS in [Pa].
+    Calculate the ultimate tensile strength of the rolled stock using the
+    Hall-Petch relationship: UTS = σ_0 + k / √d
+
+    Args:
+        env_config: Environment configuration containing Hall-Petch parameters.
+        pass_sequence: A solved PyRoll PassSequence; grain size is read from
+            the output profile of the last element.
+
+    Returns:
+        Ultimate tensile strength [Pa].
     """
     hall_petch = env_config.material.hall_petch
     grain_size_um = pass_sequence.out_profile.grain_size * 1e6
@@ -113,19 +134,24 @@ def create_in_profile(
         gg_params: JMAKGrainGrowthParameters = None,
 ) -> pr.BoxProfile:
     """
-    Create an input profile object for the flat rolling simulation.
-
-    Creates a BoxProfile representing the initial workpiece with S355 steel
-    material properties. The geometry comes from env_config, while material
-    properties (flow stress, density, specific heat) use the predefined
-    constants for S355 steel.
+    Create a PyRoll BoxProfile representing the initial workpiece.
 
     Args:
-        initial_thickness: Initial workpiece thickness [m]
-        env_config: Environment configuration with geometry and temperature settings
+        starting_thickness_m: Initial workpiece thickness [m].
+        starting_width_m: Initial workpiece width [m].
+        starting_length_m: Initial workpiece length [m].
+        starting_temperature_K: Initial workpiece temperature [K].
+        starting_grain_size_m: Initial austenite grain size [m].
+        density_kg_m3: Material density [kg/m³].
+        specific_heat_capacity_j_kg_K: Specific heat capacity [J/(kg·K)].
+        flow_stress_coefficients: Hensel flow stress model coefficients.
+        drx_params: Dynamic recrystallization JMAK parameters (optional).
+        mdrx_params: Metadynamic recrystallization JMAK parameters (optional).
+        srx_params: Static recrystallization JMAK parameters (optional).
+        gg_params: Grain growth JMAK parameters (optional).
 
     Returns:
-        BoxProfile configured for hot rolling simulation
+        pr.BoxProfile configured for hot rolling simulation.
     """
 
     assert starting_thickness_m > 0.0, 'starting_thickness_m must be > 0.0'
@@ -158,7 +184,16 @@ def create_in_profile(
 
 def create_roll(env_config: EnvConfig) -> pr.Roll:
     """
-    creates a roll object for the flat rolling simulation.
+    Create a PyRoll Roll object from the mill configuration.
+
+    Sets a flat groove with the configured usable width, and applies the
+    nominal radius, Poisson's ratio, and elastic modulus from env_config.mill.
+
+    Args:
+        env_config: Environment configuration containing mill parameters.
+
+    Returns:
+        pr.Roll configured for flat rolling simulation.
     """
 
     roll = pr.Roll(

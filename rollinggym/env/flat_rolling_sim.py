@@ -48,11 +48,11 @@ def flat_rolling_simulation(
     Args:
         in_profile: Input material profile (BoxProfile for flat rolling).
         roll: Roll configuration including geometry and material properties.
-        roll_gap_sequence: Target roll gaps for each pass [m].
-        interpass_time_sequence: Time between passes [s].
-        roll_temperature_sequence: Roll surface temperature for each pass [K].
+        roll_gap_sequence_m: Target roll gaps for each pass [m].
+        interpass_time_sequence_s: Time between passes [s].
+        roll_temperature_sequence_K: Roll surface temperature for each pass [K].
             Defaults to 293.15 K (20°C) if not provided.
-        rolling_velocity_sequence: Rolling velocity for each pass [m/s].
+        rolling_velocity_sequence_m_s: Rolling velocity for each pass [m/s].
 
     Returns:
         PassSequence containing all roll passes and transport phases.
@@ -162,7 +162,8 @@ def flat_rolling_step_simulation(
         pass_label_num: Pass number for labeling.
 
     Returns:
-        PassSequence containing one RollPass and one Transport.
+        PassSequence of length 2: index [-2] is the RollPass (force, torque, thickness),
+        index [-1] is the Transport (post-cooling temperature and grain size).
 
     Raises:
         RuntimeError: If PyRoll solver fails during simulation.

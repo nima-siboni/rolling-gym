@@ -81,7 +81,20 @@ class FlatRollingEnv(Env):     # pylint: disable=too-many-instance-attributes
             self,
             env_config,
     ):
+        """
+        Initialize the flat rolling environment.
 
+        Args:
+            env_config: Dict with the following keys:
+                - 'config' (EnvConfig, required): Pydantic configuration object.
+                - 'mode' (str, optional): Default episode mode — 'train' or 'inference'.
+                  Defaults to 'train'.
+                - 'env_seed' (int, optional): Seed for the environment's RNG. If omitted
+                  in train mode, a random seed is used.
+
+        Raises:
+            ValueError: If 'config' key is missing from env_config.
+        """
         super().__init__()
         self.config = env_config.get('config', None)
         if self.config is None:
@@ -215,20 +228,23 @@ class FlatRollingEnv(Env):     # pylint: disable=too-many-instance-attributes
 
     def _get_action_mask(self) -> np.ndarray:
         """
-        Compute the action mask for both height reduction and interpass time
-        based on physical constraints.
+        Compute action masks for all three action dimensions based on physical constraints.
 
         Height reduction constraints:
-        1. No action above hr_lim (state[2])
-        2. No height reduction beyond 70% of current thickness (state[0])
-        3. No action that brings thickness below target (state[3])
+            1. No action above hr_lim (state[2])
+            2. No height reduction beyond 70% of current thickness (state[0])
+            3. No action that would bring thickness below target (state[3])
+            Note: action index 0 (no reduction) is always valid as a safety fallback.
         Interpass time constraints:
-        1. Interpass time must be at least 1 second
+            1. Index 0 (0 seconds) is always masked — minimum interpass time is 1 second.
+        Rolling velocity constraints:
+            1. Index 0 (0 m/s) is always masked — rolling must use a non-zero velocity.
 
         Returns:
-            dict: containing 'height_reduction' and 'interpass_time' masks
-            in the form of np.ndarrays (Binary mask where 1.0 = action allowed,
-            0.0 = action disallowed)
+            dict with three keys, each a float32 np.ndarray (1.0 = allowed, 0.0 = blocked):
+                - 'height_reduction': shape (501,), indices map to 0.0–50.0 mm
+                - 'interpass_time':   shape (121,), indices map to 0–120 s
+                - 'rolling_velocity': shape (7,),   indices map to 0–0.50 m/s
         """
         current_thickness_mm = self.state[0]
         hr_limit_mm = self.state[2]
@@ -268,14 +284,16 @@ class FlatRollingEnv(Env):     # pylint: disable=too-many-instance-attributes
         """
         Get the current observation of the environment.
 
-        Observations are z-score normalized using pre-computed mean and std
-        to bring all features to similar scales (approximately [-3, 3]).
-        This is critical for the neural network to learn from all features,
-        especially small-magnitude ones like target grain size.
+        Observations are z-score normalized using the mean and std defined in
+        config.obs_normalization, bringing all features to approximately [-3, 3].
+        This is critical for stable neural network learning, especially for
+        small-magnitude features like target grain size.
 
         Returns:
-            dict: Dictionary containing 'observations' (normalized state vector)
-                  and 'action_mask'
+            dict with two keys:
+                - 'observations': float32 np.ndarray of shape (10,), z-score normalized
+                - 'action_mask':  dict with keys 'height_reduction', 'interpass_time',
+                  and 'rolling_velocity' (see _get_action_mask)
         """
         # Z-score normalization: (x - mean) / std
         normalized_state = (self.state - self.obs_mean) / (self.obs_std + 1e-8)
@@ -286,12 +304,14 @@ class FlatRollingEnv(Env):     # pylint: disable=too-many-instance-attributes
 
     def _get_info(self) -> dict:
         """
-        Get additional information about the current state of the environment.
+        Get a human-readable snapshot of the current state in physical units.
 
-        Keys are defined by :attr:`INFO_SCHEMA` (single source of truth).
+        Keys and units are defined by :attr:`INFO_SCHEMA`. Values are extracted
+        from the raw (unnormalized) state vector and cast to their declared types.
 
         Returns:
-            dict: A dictionary containing additional information.
+            dict: Keys from INFO_SCHEMA mapped to their current physical values, e.g.
+                  {'current_thickness': 45.2, 'step_count': 3, 'rolling_force': 1.2e6, ...}
         """
         return {
             k: cast(self.state[idx])
@@ -306,14 +326,32 @@ class FlatRollingEnv(Env):     # pylint: disable=too-many-instance-attributes
     ) -> tuple[dict, dict]:
         """
         Reset the environment to an initial state.
-        Args:
-            seed: Random seed for reproducibility
-            options: Dict with optional keys:
-                - 'mode': 'train' or 'inference' (defaults to self.default_mode)
-                - 'initial_thickness': Starting thickness in mm (for inference mode)
-                - 'target_thickness': Target thickness in mm (for inference mode)
-                - 'hr_limit': Height reduction limit per pass (optional, defaults to 35.0)
 
+        In 'train' mode, initial thickness, temperature, grain size, and targets are
+        randomized within the ranges defined in the config. In 'inference' mode, all
+        values must be supplied explicitly via options.
+
+        Args:
+            seed: Random seed passed to the base Gymnasium Env.
+            options: Dict with optional keys:
+                - 'mode' (str): 'train' or 'inference'. Defaults to self.default_mode.
+                In inference mode the following keys are also required:
+                - 'initial_thickness_mm' (float): Starting thickness [mm], range [5, 150]
+                - 'target_thickness_mm'  (float): Target thickness [mm], range [1, 50]
+                - 'initial_grain_size_um' (float): Starting grain size [µm], range [100, 500]
+                - 'target_grain_size_um'  (float): Target grain size [µm], range [5, 25]
+                - 'initial_temperature_K' (float): Starting temperature [K], range [1273, 1523]
+                - 'target_temperature_K'  (float): Target temperature [K], range [1073, 1273]
+                - 'hr_limit_mm' (float, optional): Max HR per pass [mm], range [1, 60].
+                  Defaults to 60.0 if not provided.
+
+        Returns:
+            tuple[dict, dict]: (observation, info) where observation is the dict returned
+                by _get_obs() and info is the dict returned by _get_info().
+
+        Raises:
+            ValueError: If inference mode is requested without a complete options dict,
+                        or if any option value is outside its valid range.
         """
         super().reset(seed=seed)
 
@@ -464,14 +502,30 @@ class FlatRollingEnv(Env):     # pylint: disable=too-many-instance-attributes
             pass_schedule_rolling_velocity_sequence_m_s,
     ) -> np.ndarray:
         """
-        Update the environment state based on the action taken.
+        Compute the next state by running an incremental PyRoll simulation.
+
+        If hr_mm < 1, the simulation is skipped (negligible effect) and only
+        interpass cooling is applied to the cached profile. Otherwise, a single
+        RollPass + Transport is simulated using the cached profile from the
+        previous step. On simulation failure (timeout, NaN, or exception), the
+        previous thickness is restored and force/torque/temperature/grain size
+        are set to the sentinel value -100.0.
 
         Args:
-            prev_state: Previous state vector
-            hr: Height reduction in mm
-            int_time: Inter-pass time in seconds
-            pass_schedule_thic: List of thickness values
-            pass_schedule_inter: List of inter-pass times
+            prev_state: State vector from the previous step (shape (10,)).
+            hr_mm: Height reduction for this pass [mm].
+            int_time_s: Interpass cooling time after this pass [s].
+            roll_vel_m_s: Rolling velocity for this pass [m/s].
+            pass_schedule_thickness_sequence_m: Running list of roll gaps [m].
+            pass_schedule_interpass_sequence_s: Running list of interpass times [s].
+            pass_schedule_rolling_velocity_sequence_m_s: Running list of velocities [m/s].
+
+        Returns:
+            tuple[np.ndarray, list, list, list]:
+                - new_state: Updated state vector (shape (10,))
+                - updated thickness sequence [m]
+                - updated interpass time sequence [s]
+                - updated rolling velocity sequence [m/s]
         """
 
         new_state = prev_state.copy()
@@ -683,7 +737,18 @@ class FlatRollingEnv(Env):     # pylint: disable=too-many-instance-attributes
         Take a step in the environment based on the action.
 
         Args:
-            action: np.ndarray of shape (2,) with [hr_action, time_action]
+            action: array-like of shape (3,) with integer indices:
+                - action[0]: height reduction index in [0, 500] → 0.0–50.0 mm
+                - action[1]: interpass time index in [1, 120] → 1–120 s (0 is masked)
+                - action[2]: rolling velocity index in [1, 6] → 0.083–0.50 m/s (0 is masked)
+
+        Returns:
+            tuple: (observation, reward, terminated, truncated, info)
+                - observation (dict): from _get_obs()
+                - reward (float): sum of all reward components for this step
+                - terminated (bool): True when target thickness is reached
+                - truncated (bool): True when MAX_STEPS is reached
+                - info (dict): reward component breakdown merged with _get_info() values
         """
 
         assert self.state is not None, 'Call reset before using step method.'
@@ -743,7 +808,7 @@ class FlatRollingEnv(Env):     # pylint: disable=too-many-instance-attributes
 
     def render(self) -> None:
         """
-        Think about showing the current agent decisions and state of the environment using render().
+        Render the environment. Currently not implemented — returns None.
         """
         return None
 

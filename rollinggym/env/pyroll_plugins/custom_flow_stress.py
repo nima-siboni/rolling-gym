@@ -13,7 +13,24 @@ import numpy as np
 @dataclass
 class CustomFlowStressCoefficients:  # pylint: disable=too-many-instance-attributes
     """
-    Class representing the Hensel flow stress model.
+    Coefficients for the Hensel flow stress model:
+
+        σ_f = a · ε̇^(m1 + m2·T) · exp(m3·T) · ε^m4 · exp(m5·ε)
+
+    where T is temperature in °C, ε is strain (offset by base_strain),
+    and ε̇ is strain rate (offset by base_strain_rate). Coefficients m6–m9
+    are reserved for extended model variants and default to 0.
+
+    Attributes:
+        a: Strength coefficient [Pa].
+        m1: Strain rate sensitivity base [-].
+        m2: Temperature–strain rate interaction [1/°C].
+        m3: Temperature sensitivity [1/°C].
+        m4: Strain hardening exponent [-].
+        m5: Dynamic recovery coefficient [-].
+        m6–m9: Reserved coefficients, unused in the base model (default 0).
+        base_strain: Strain offset to avoid singularity at ε=0 (default 0.1).
+        base_strain_rate: Strain rate offset to avoid singularity at ε̇=0 (default 0.1).
     """
     a: Optional[float]
     m1: Optional[float] = 0
@@ -35,13 +52,16 @@ def flow_stress(
     strain_rate: Union[float, np.ndarray], temperature: Union[float, np.ndarray],
 ):
     """
-    Calculates the flow stress according to the model from the provided
-    coefficients, strain, strain rate and temperature.
+    Calculate flow stress using the Hensel model.
 
-    :param coefficients: the coefficients set to use
-    :param strain: the equivalent strain experienced
-    :param strain_rate: the equivalent strain rate experienced
-    :param temperature: the absolute temperature of the material (K)
+    Args:
+        coefficients: Hensel model coefficients (see CustomFlowStressCoefficients).
+        strain: Equivalent strain [-]. Offset by base_strain internally.
+        strain_rate: Equivalent strain rate [1/s]. Offset by base_strain_rate internally.
+        temperature: Absolute temperature [K]. Converted to °C internally.
+
+    Returns:
+        Flow stress [Pa], same shape as the broadcastable inputs.
     """
 
     strain = strain + coefficients.base_strain                              # type: ignore
